@@ -8,10 +8,43 @@ import pygame
 import random
 import math
 import numpy as np
+import logging
+import os
+import datetime
+import argparse
 from typing import List, Tuple, Dict, Any
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Predator-Prey Ecosystem Simulation')
+    parser.add_argument('--log-level', 
+                      choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                      default='INFO',
+                      help='Set the logging level (default: INFO)')
+    return parser.parse_args()
+
+# Parse command line arguments
+args = parse_args()
 
 # Initialize pygame
 pygame.init()
+
+# Set up logging
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_filename = f"eco_sim_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+log_path = os.path.join(log_dir, log_filename)
+
+logging.basicConfig(
+    level=getattr(logging, args.log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_path),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("eco_sim")
+logger.info(f"Simulation started with log level: {args.log_level}")
 
 # Constants
 SCREEN_WIDTH = 1000
@@ -38,6 +71,7 @@ class Entity:
         self.energy = 100
         self.max_energy = 100
         self.velocity = [0, 0]
+        self.id = id(self)  # Unique ID for entity
     
     def update(self, dt: float, simulation):
         """Update entity state."""
@@ -45,6 +79,8 @@ class Entity:
         self.age += dt
         if self.age > self.max_age:
             self.alive = False
+            entity_type = self.__class__.__name__.lower()
+            logger.debug(f"{entity_type.capitalize()} {self.id} died of old age at {self.age:.1f}/{self.max_age}")
             
         # Basic physics - apply velocity
         self.x += self.velocity[0] * dt * 10
@@ -62,6 +98,8 @@ class Entity:
         self.energy -= 0.5 * dt
         if self.energy <= 0:
             self.alive = False
+            entity_type = self.__class__.__name__.lower()
+            logger.debug(f"{entity_type.capitalize()} {self.id} died from energy depletion")
     
     def render(self, screen):
         """Render the entity on screen."""
@@ -112,8 +150,10 @@ class Plant(Entity):
             
             # Check bounds
             if 0 <= new_x < SCREEN_WIDTH and 0 <= new_y < SCREEN_HEIGHT:
-                simulation.add_entity(Plant(new_x, new_y))
+                new_plant = Plant(new_x, new_y)
+                simulation.add_entity(new_plant)
                 self.size *= 0.8  # Reduce size after reproducing
+                logger.debug(f"Plant {self.id} reproduced, creating plant {new_plant.id}")
 
 class Herbivore(Entity):
     """Herbivore that eats plants and can be eaten by carnivores."""
@@ -130,6 +170,7 @@ class Herbivore(Entity):
         self.energy_consumption_rate = 5.0
         self.reproduction_chance = 0.0005
         self.max_age = 150
+        logger.debug(f"New herbivore {self.id} created at ({self.x:.1f}, {self.y:.1f})")
     
     def update(self, dt: float, simulation):
         """Update herbivore state."""
@@ -170,8 +211,10 @@ class Herbivore(Entity):
                 # If close enough, eat plant
                 if self.distance_to(entity) < self.size + entity.size:
                     self.energy = min(self.max_energy, self.energy + entity.energy_value)
+                    old_hunger = self.hunger
                     self.hunger = max(0, self.hunger - 0.3)
                     entity.alive = False
+                    logger.debug(f"Herbivore {self.id} ate plant {entity.id}, energy now {self.energy:.1f}, hunger {old_hunger:.1f} → {self.hunger:.1f}")
                     break
     
     def reproduce(self, simulation):
@@ -183,8 +226,11 @@ class Herbivore(Entity):
         
         # Check bounds
         if 0 <= new_x < SCREEN_WIDTH and 0 <= new_y < SCREEN_HEIGHT:
-            simulation.add_entity(Herbivore(new_x, new_y))
+            new_herbivore = Herbivore(new_x, new_y)
+            simulation.add_entity(new_herbivore)
+            old_energy = self.energy
             self.energy *= 0.7  # Reduce energy after reproducing
+            logger.debug(f"Herbivore {self.id} reproduced, energy {old_energy:.1f} → {self.energy:.1f}, new herbivore ID: {new_herbivore.id}")
 
 class Carnivore(Entity):
     """Carnivore that hunts herbivores."""
@@ -201,6 +247,7 @@ class Carnivore(Entity):
         self.energy_consumption_rate = 8.0
         self.reproduction_chance = 0.0002
         self.max_age = 180
+        logger.debug(f"New carnivore {self.id} created at ({self.x:.1f}, {self.y:.1f})")
     
     def update(self, dt: float, simulation):
         """Update carnivore state."""
@@ -241,8 +288,10 @@ class Carnivore(Entity):
                 # If close enough, eat herbivore
                 if self.distance_to(entity) < self.size + entity.size:
                     self.energy = min(self.max_energy, self.energy + entity.energy)
+                    old_hunger = self.hunger
                     self.hunger = max(0, self.hunger - 0.5)
                     entity.alive = False
+                    logger.debug(f"Carnivore {self.id} ate herbivore {entity.id}, energy now {self.energy:.1f}, hunger {old_hunger:.1f} → {self.hunger:.1f}")
                     break
     
     def reproduce(self, simulation):
@@ -254,8 +303,11 @@ class Carnivore(Entity):
         
         # Check bounds
         if 0 <= new_x < SCREEN_WIDTH and 0 <= new_y < SCREEN_HEIGHT:
-            simulation.add_entity(Carnivore(new_x, new_y))
+            new_carnivore = Carnivore(new_x, new_y)
+            simulation.add_entity(new_carnivore)
+            old_energy = self.energy
             self.energy *= 0.6  # Reduce energy after reproducing
+            logger.debug(f"Carnivore {self.id} reproduced, energy {old_energy:.1f} → {self.energy:.1f}, new carnivore ID: {new_carnivore.id}")
 
 class Environment:
     """Simple environment with water bodies."""
@@ -334,6 +386,7 @@ class Simulation:
     
     def __init__(self):
         """Initialize the simulation."""
+        logger.info("Initializing simulation")
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Predator-Prey Ecosystem Simulation - Alpha")
         
@@ -366,9 +419,11 @@ class Simulation:
         
         # Initialize with some entities
         self.populate_initial_entities()
+        logger.info("Simulation initialization complete")
     
     def populate_initial_entities(self):
         """Create initial entities."""
+        logger.info("Populating initial entities")
         # Add plants
         for _ in range(100):
             x = random.uniform(0, SCREEN_WIDTH)
@@ -386,6 +441,7 @@ class Simulation:
             x = random.uniform(0, SCREEN_WIDTH)
             y = random.uniform(0, SCREEN_HEIGHT)
             self.add_entity(Carnivore(x, y))
+        logger.info(f"Initial population - Plants: 100, Herbivores: 20, Carnivores: 5")
     
     def add_entity(self, entity):
         """Add an entity to the simulation."""
@@ -409,7 +465,11 @@ class Simulation:
                 entity.update(dt, self)
         
         # Clean up dead entities
+        initial_count = len(self.entities)
         self.entities = [e for e in self.entities if e.is_alive()]
+        removed_count = initial_count - len(self.entities)
+        if removed_count > 0:
+            logger.debug(f"Removed {removed_count} dead entities")
         
         # Update stats
         self.update_stats()
@@ -420,11 +480,20 @@ class Simulation:
         herbivores = sum(1 for e in self.entities if isinstance(e, Herbivore))
         carnivores = sum(1 for e in self.entities if isinstance(e, Carnivore))
         
+        prev_stats = self.stats.copy()
         self.stats = {
             "plants": plants,
             "herbivores": herbivores,
             "carnivores": carnivores
         }
+        
+        # Log significant population changes
+        for species in self.stats:
+            if prev_stats.get(species, 0) > 0 and self.stats[species] > 0:
+                pct_change = (self.stats[species] - prev_stats[species]) / prev_stats[species] * 100
+                if abs(pct_change) >= 10:  # Log changes of 10% or more
+                    direction = "increased" if pct_change > 0 else "decreased"
+                    logger.info(f"{species.capitalize()} population {direction} by {abs(pct_change):.1f}% to {self.stats[species]}")
         
         # Add to history (limit history length to 200 points)
         for key in self.population_history:
@@ -517,7 +586,10 @@ class Simulation:
     
     def run(self):
         """Run the main simulation loop."""
+        logger.info("Starting main simulation loop")
         last_time = pygame.time.get_ticks() / 1000.0
+        frame_count = 0
+        next_log_time = last_time + 10  # Log stats every 10 seconds
         
         while self.running:
             # Calculate delta time
@@ -529,20 +601,35 @@ class Simulation:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                    logger.info("Received quit event")
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
+                        logger.info("ESC key pressed, quitting simulation")
                     elif event.key == pygame.K_SPACE:
                         self.paused = not self.paused
+                        logger.info(f"Simulation {'paused' if self.paused else 'resumed'}")
                     elif event.key == pygame.K_UP:
+                        old_scale = self.time_scale
                         self.time_scale = min(10.0, self.time_scale * 1.5)
+                        logger.info(f"Time scale increased from {old_scale:.1f}x to {self.time_scale:.1f}x")
                     elif event.key == pygame.K_DOWN:
+                        old_scale = self.time_scale
                         self.time_scale = max(0.1, self.time_scale / 1.5)
+                        logger.info(f"Time scale decreased from {old_scale:.1f}x to {self.time_scale:.1f}x")
                     elif event.key == pygame.K_g:
                         self.show_graph = not self.show_graph
+                        logger.info(f"Population graph {'shown' if self.show_graph else 'hidden'}")
             
             # Update simulation
             self.update(dt)
+            
+            # Periodically log statistics
+            if current_time >= next_log_time and not self.paused:
+                logger.info(f"Simulation stats - Plants: {self.stats['plants']}, " +
+                            f"Herbivores: {self.stats['herbivores']}, " +
+                            f"Carnivores: {self.stats['carnivores']}")
+                next_log_time = current_time + 10
             
             # Render
             self.render()
@@ -552,7 +639,15 @@ class Simulation:
             
             # Cap the frame rate
             self.clock.tick(FPS)
+            
+            # Count frames
+            frame_count += 1
         
+        # Log final stats before quitting
+        logger.info(f"Final simulation stats - Plants: {self.stats['plants']}, " +
+                    f"Herbivores: {self.stats['herbivores']}, " +
+                    f"Carnivores: {self.stats['carnivores']}")
+        logger.info(f"Simulation ended after {frame_count} frames")
         pygame.quit()
 
 if __name__ == "__main__":

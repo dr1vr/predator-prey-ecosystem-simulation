@@ -11,6 +11,7 @@ A simplified 2D simulation of a predator-prey ecosystem with basic genetics, AI-
 - Carnivores that hunt herbivores
 - Population statistics and graphing
 - Time control (pause/resume, speed up/slow down)
+- Detailed logging system for simulation events
 
 ## Requirements
 
@@ -33,6 +34,25 @@ Run the simulation directly with Python:
 python simulation.py
 ```
 
+### Command Line Arguments
+
+The simulation supports several command line arguments for customization:
+
+- `--log-level` - Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+Examples:
+
+```bash
+# Run with default settings (INFO level logging)
+python simulation.py
+
+# Run with verbose debug logging
+python simulation.py --log-level DEBUG
+
+# Run with minimal logging (only warnings and errors)
+python simulation.py --log-level WARNING
+```
+
 ## Controls
 
 - **Space**: Pause/Resume simulation
@@ -50,6 +70,19 @@ This alpha version demonstrates a simplified ecosystem with three main types of 
 3. **Carnivores** (red): Hunt herbivores and reproduce when they have enough energy.
 
 The simulation includes a day/night cycle that affects visibility. Water bodies are rendered as blue areas.
+
+## Logs
+
+The simulation generates detailed logs in the `logs` directory. Each simulation run creates a new log file with timestamp in the format `eco_sim_YYYYMMDD_HHMMSS.log`. 
+
+The logs contain information about:
+- Simulation initialization
+- Entity creation, reproduction, and consumption
+- Population changes
+- User interactions (pausing, changing speed, etc.)
+- Final simulation statistics
+
+These logs are useful for analyzing the ecosystem dynamics without having to watch the simulation in real-time.
 
 ## Notes
 
